@@ -315,9 +315,11 @@ You really shouldn't be touching this.
 
 <parameter name="arp_sender">
 <longdesc lang="en">
-The program to send ARP packets with on start. For infiniband
-interfaces, default is ipoibarping. If ipoibarping is not
-available, set this to send_arp.
+The program to send ARP packets with on start. Available options are:
+ - send_arp: default
+ - ipoibarping: default for infiniband interfaces if ipoibarping is available
+ - iputils_arping: use arping in iputils package
+ - libnet_arping: use another variant of arping based on libnet
 </longdesc>
 <shortdesc lang="en">ARP sender</shortdesc>
 <content type="string" default=""/>
@@ -687,6 +689,26 @@ is_infiniband() {
 	$IP2UTIL link show $NIC | grep link/infiniband >/dev/null
 }
 
+# wrapper function to manage PID file to run arping in background
+run_with_pidfile() {
+    local cmdline
+    local pidfile
+    local pid
+    local rc
+
+    pidfile="$1"
+    shift
+    cmdline="$@"
+
+    $cmdline &
+    pid=$!
+    echo "$pid" > $pidfile
+    wait $pid
+    rc=$?
+    rm -f $pidfile
+    return $rc
+}
+
 #
 # Send Unsolicited ARPs to update neighbor's ARP cache
 #
@@ -725,6 +747,32 @@ run_send_arp() {
 	else
 		$SENDARP $ARGS || ocf_log err "Could not send gratuitous arps"
 	fi
+}
+#
+# Run iputils-arping to send unsolicited ARPs
+#   iputils-arping does not support ARP interval and Source MAC for Cluster IP
+#
+run_iputils_arping() {
+	ARGS="-U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
+	ocf_log $LOGLEVEL "arping $ARGS"
+
+	if ocf_is_true $OCF_RESKEY_arp_bg; then
+		(run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+	else
+		run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps"
+	fi
+}
+#
+# Run libnet based arping (not the one in iputils) to send unsolicited ARPs
+#
+run_libnet_arping() {
+	ARGS="-U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
+	ocf_log $LOGLEVEL "arping $ARGS"
+
+	if ocf_is_true $OCF_RESKEY_arp_bg; then
+		(run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+	else
+		run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps"
 	fi
 }
 
@@ -1021,6 +1069,14 @@ set_send_arp_program() {
 	send_arp)
 	    check_binary $SENDARP
 	;;
+        iputils_arping)
+            check_binary arping
+            ARP_SEND_FUN=run_iputils_arping
+        ;;
+        libnet_arping)
+            check_binary arping
+            ARP_SEND_FUN=run_libnet_arping
+        ;;
 	ipoibarping)
 	    check_binary ipoibarping
 	    ARP_SEND_FUN=run_send_ib_arp
