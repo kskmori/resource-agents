@@ -688,7 +688,23 @@ is_infiniband() {
 }
 
 #
-# Run send_arp to note peers about new mac address
+# Send Unsolicited ARPs to update neighbor's ARP cache
+#
+send_arp() {
+	if [ "x$1" = "xrefresh" ] ; then
+		ARP_COUNT=$OCF_RESKEY_arp_count_refresh
+		LOGLEVEL=debug
+	else
+		ARP_COUNT=$OCF_RESKEY_arp_count
+		LOGLEVEL=info
+	fi
+	if [ $ARP_COUNT -ne 0 ] ; then
+		$ARP_SEND_FUN
+	fi
+}
+
+#
+# Run send_arp binary to send unsolicited ARPs
 #
 run_send_arp() {
 	if [ "x$IP_CIP" = "xyes" ] ; then
@@ -700,23 +716,18 @@ run_send_arp() {
 	else
 		MY_MAC=auto
 	fi
-	if [ "x$1" = "xrefresh" ] ; then
-		ARP_COUNT=$OCF_RESKEY_arp_count_refresh
-		LOGLEVEL=debug
+
+	ARGS="-i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
+	ocf_log $LOGLEVEL "$SENDARP $ARGS"
+
+	if ocf_is_true $OCF_RESKEY_arp_bg; then
+		($SENDARP $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
 	else
-		ARP_COUNT=$OCF_RESKEY_arp_count
-		LOGLEVEL=info
+		$SENDARP $ARGS || ocf_log err "Could not send gratuitous arps"
 	fi
-	if [ $ARP_COUNT -ne 0 ] ; then
-		ARGS="-i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
-		ocf_log $LOGLEVEL "$SENDARP $ARGS"
-		if ocf_is_true $OCF_RESKEY_arp_bg; then
-			($SENDARP $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
-		else
-			$SENDARP $ARGS || ocf_log err "Could not send gratuitous arps"
-		fi
 	fi
 }
+
 
 #
 # Run send_ua to note send ICMPv6 Unsolicited Neighbor Advertisements.
@@ -761,21 +772,13 @@ run_send_ua() {
 # Run ipoibarping to note peers about new Infiniband address
 #
 run_send_ib_arp() {
-	if [ "x$1" = "xrefresh" ] ; then
-		ARP_COUNT=$OCF_RESKEY_arp_count_refresh
-		LOGLEVEL=debug
+	ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
+	ocf_log $LOGLEVEL "ipoibarping $ARGS"
+
+	if ocf_is_true $OCF_RESKEY_arp_bg; then
+		(ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
 	else
-		ARP_COUNT=$OCF_RESKEY_arp_count
-		LOGLEVEL=info
-	fi
-	if [ $ARP_COUNT -ne 0 ] ; then
-		ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
-		ocf_log $LOGLEVEL "ipoibarping $ARGS"
-		if ocf_is_true $OCF_RESKEY_arp_bg; then
-			(ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
-		else
-			ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps"
-		fi
+		ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps"
 	fi
 }
 
@@ -910,7 +913,7 @@ ip_start() {
 		;;
 	*)
 		if [ $FAMILY = "inet" ];then
-		    $ARP_SEND_FUN
+		    send_arp
 		else
 		    if [ -x $SENDUA ]; then
 			run_send_ua
@@ -997,7 +1000,7 @@ ip_monitor() {
 	local ip_status=`ip_served`
 	case $ip_status in
 	ok)
-		$ARP_SEND_FUN refresh
+		send_arp refresh
 		return $OCF_SUCCESS
 		;;
 	partial|no|partial2)
