@@ -722,6 +722,14 @@ send_arp() {
 		ARP_COUNT=$OCF_RESKEY_arp_count
 		LOGLEVEL=info
 	fi
+	# do not need to send Gratuitous ARPs in the Cluster IP configuration
+	# except send_arp.libnet binary to retain the old behavior
+	if [ "x$IP_CIP" = "xyes" ] && \
+	   [ "x$ARP_SEND_FUN" != "xrun_send_arp" ] ; then
+		ocf_log info "Gratuitous ARPs are not sent in the Cluster IP configuration"
+		return
+	fi
+
 	if [ $ARP_COUNT -ne 0 ] ; then
 		$ARP_SEND_FUN
 	fi
@@ -735,6 +743,7 @@ run_send_arp() {
 	    if [ x = "x$IF_MAC" ] ; then
 		MY_MAC=auto
 	    else
+		# send_arp.linux should return without doing anything in this case
 		MY_MAC=`echo ${IF_MAC} | sed -e 's/://g'`
 	    fi
 	else
