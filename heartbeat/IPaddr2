@@ -315,6 +315,18 @@ The program to send ARP packets with on start. Available options are:
 <content type="string" default=""/>
 </parameter>
 
+<parameter name="send_arp_opts">
+<longdesc lang="en">
+Extra options to pass to the arp_sender program.
+Available options are vary depending on which arp_sender is used.
+
+A typical use case is specifying '-A' for iputils_arping to use
+ARP REPLY instead of ARP REQUEST as Gratuitous ARPs.
+</longdesc>
+<shortdesc lang="en">Options for ARP sender</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
 <parameter name="flush_routes">
 <longdesc lang="en">
 Flush the routing table on stop. This is for
@@ -729,7 +741,7 @@ run_send_arp() {
 		MY_MAC=auto
 	fi
 
-	ARGS="-i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
+	ARGS="$OCF_RESKEY_send_arp_opts -i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
 	ocf_log $LOGLEVEL "$SENDARP $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
@@ -743,7 +755,7 @@ run_send_arp() {
 #   iputils-arping does not support ARP interval and Source MAC for Cluster IP
 #
 run_iputils_arping() {
-	ARGS="-U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
+	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
 	ocf_log $LOGLEVEL "arping $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
@@ -756,7 +768,7 @@ run_iputils_arping() {
 # Run libnet based arping (not the one in iputils) to send unsolicited ARPs
 #
 run_libnet_arping() {
-	ARGS="-U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
+	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
 	ocf_log $LOGLEVEL "arping $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
