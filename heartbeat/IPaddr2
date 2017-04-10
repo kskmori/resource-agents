@@ -711,6 +711,20 @@ run_with_pidfile() {
     return $rc
 }
 
+run_arp_sender() {
+    local cmdline
+    local output
+    local rc
+    cmdline="$@"
+
+    output=$($cmdline 2>&1)
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ocf_log err "Could not send gratuitous arps: rc=$rc"
+    fi
+    ocf_log $LOGLEVEL "$output"
+}
+
 #
 # Send Unsolicited ARPs to update neighbor's ARP cache
 #
@@ -754,9 +768,9 @@ run_send_arp() {
 	ocf_log $LOGLEVEL "$SENDARP $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		($SENDARP $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+		run_arp_sender $SENDARP $ARGS &
 	else
-		$SENDARP $ARGS || ocf_log err "Could not send gratuitous arps"
+		run_arp_sender $SENDARP $ARGS
 	fi
 }
 #
@@ -835,9 +849,9 @@ run_send_ib_arp() {
 	ocf_log $LOGLEVEL "ipoibarping $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		(ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+		run_arp_sender ipoibarping $ARGS &
 	else
-		ipoibarping $ARGS || ocf_log err "Could not send gratuitous arps"
+		run_arp_sender ipoibarping $ARGS
 	fi
 }
 
