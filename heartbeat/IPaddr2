@@ -691,6 +691,43 @@ is_infiniband() {
 	$IP2UTIL link show $NIC | grep link/infiniband >/dev/null
 }
 
+build_arp_sender_cmd() {
+    case "$ARP_SENDER" in
+	send_arp)
+	    if [ "x$IP_CIP" = "xyes" ] ; then
+	        if [ x = "x$IF_MAC" ] ; then
+		    MY_MAC=auto
+	        else
+		    # send_arp.linux should return without doing anything in this case
+		    MY_MAC=`echo ${IF_MAC} | sed -e 's/://g'`
+	        fi
+	    else
+		    MY_MAC=auto
+	    fi
+
+	    ARGS="$OCF_RESKEY_send_arp_opts -i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
+	    ARP_SENDER_CMD="$SENDARP $ARGS"
+	    ;;
+	iputils_arping)
+	    ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
+	    ARP_SENDER_CMD="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
+	    ;;
+	libnet_arping)
+	    ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
+	    ARP_SENDER_CMD="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
+	    ;;
+	ipoibarping)
+	    ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
+	    ARP_SENDER_CMD="ipoibarping $ARGS"
+	    ;;
+	*)
+	    # should not occur
+	    ocf_exit_reason "unrecognized arp_sender value: $ARP_SENDER"
+	    exit $OCF_ERR_GENERIC
+	    ;;
+    esac
+}
+
 # wrapper function to manage PID file to run arping in background
 run_with_pidfile() {
     local cmdline
@@ -736,66 +773,29 @@ send_arp() {
 		ARP_COUNT=$OCF_RESKEY_arp_count
 		LOGLEVEL=info
 	fi
-	# do not need to send Gratuitous ARPs in the Cluster IP configuration
-	# except send_arp.libnet binary to retain the old behavior
-	if [ "x$IP_CIP" = "xyes" ] && \
-	   [ "x$ARP_SEND_FUN" != "xrun_send_arp" ] ; then
-		ocf_log info "Gratuitous ARPs are not sent in the Cluster IP configuration"
-		return
-	fi
-
 	if [ $ARP_COUNT -eq 0 ] ; then
 		return
 	fi
 
-        # prepare arguments for each arp sender program
-        # $ARP_SENDER_CMDLINE should be set
-        $ARP_SEND_FUN
+	# do not need to send Gratuitous ARPs in the Cluster IP configuration
+	# except send_arp.libnet binary to retain the old behavior
+	if [ "x$IP_CIP" = "xyes" ] && \
+	   [ "x$ARP_SENDER" != "xsend_arp" ] ; then
+		ocf_log info "Gratuitous ARPs are not sent in the Cluster IP configuration"
+		return
+	fi
 
-	ocf_log $LOGLEVEL "$ARP_SENDER_CMDLINE"
+        # prepare arguments for each arp sender program
+        # $ARP_SENDER_CMD should be set
+	build_arp_sender_cmd
+
+	ocf_log $LOGLEVEL "$ARP_SENDER_CMD"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender $ARP_SENDER_CMDLINE &
+		run_arp_sender $ARP_SENDER_CMD &
 	else
-		run_arp_sender $ARP_SENDER_CMDLINE
+		run_arp_sender $ARP_SENDER_CMD
 	fi
-}
-
-#
-# Run send_arp binary to send unsolicited ARPs
-#
-run_send_arp() {
-	if [ "x$IP_CIP" = "xyes" ] ; then
-	    if [ x = "x$IF_MAC" ] ; then
-		MY_MAC=auto
-	    else
-		# send_arp.linux should return without doing anything in this case
-		MY_MAC=`echo ${IF_MAC} | sed -e 's/://g'`
-	    fi
-	else
-		MY_MAC=auto
-	fi
-
-	ARGS="$OCF_RESKEY_send_arp_opts -i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
-
-	ARP_SENDER_CMDLINE="$SENDARP $ARGS"
-}
-#
-# Run iputils-arping to send unsolicited ARPs
-#   iputils-arping does not support ARP interval and Source MAC for Cluster IP
-#
-run_iputils_arping() {
-	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
-
-	ARP_SENDER_CMDLINE="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
-}
-#
-# Run libnet based arping (not the one in iputils) to send unsolicited ARPs
-#
-run_libnet_arping() {
-	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
-
-	ARP_SENDER_CMDLINE="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
 }
 
 
@@ -836,15 +836,6 @@ run_send_ua() {
 	ARGS="-i $OCF_RESKEY_arp_interval -c $OCF_RESKEY_arp_count $OCF_RESKEY_ip $NETMASK $NIC"
 	ocf_log info "$SENDUA $ARGS"
 	$SENDUA $ARGS || ocf_log err "Could not send ICMPv6 Unsolicited Neighbor Advertisements."
-}
-
-#
-# Run ipoibarping to note peers about new Infiniband address
-#
-run_send_ib_arp() {
-	ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
-
-	ARP_SENDER_CMDLINE="ipoibarping $ARGS"
 }
 
 # Do we already serve this IP address on the given $NIC?
@@ -1080,23 +1071,20 @@ ip_monitor() {
 
 # make sure that we have something to send ARPs with
 set_send_arp_program() {
-    ARP_SEND_FUN=run_send_arp
+    ARP_SENDER="$OCF_RESKEY_arp_sender"
     if [ -n "$OCF_RESKEY_arp_sender" ]; then
 	case "$OCF_RESKEY_arp_sender" in
 	send_arp)
 	    check_binary $SENDARP
 	;;
-        iputils_arping)
-            check_binary arping
-            ARP_SEND_FUN=run_iputils_arping
-        ;;
-        libnet_arping)
-            check_binary arping
-            ARP_SEND_FUN=run_libnet_arping
-        ;;
+	iputils_arping)
+	    check_binary arping
+	;;
+	libnet_arping)
+	    check_binary arping
+	;;
 	ipoibarping)
 	    check_binary ipoibarping
-	    ARP_SEND_FUN=run_send_ib_arp
 	;;
 	*)
 	    ocf_exit_reason "unrecognized arp_sender value: $OCF_RESKEY_arp_sender"
@@ -1105,12 +1093,12 @@ set_send_arp_program() {
 	esac
     else
 	if is_infiniband; then
-	    ARP_SEND_FUN=run_send_ib_arp
+	    ARP_SENDER=ipoibarping
 	    if ! have_binary ipoibarping; then
 	    	[ "$__OCF_ACTION" = start ] &&
 		    ocf_log warn "using send_arp for infiniband because ipoibarping is not available (set arp_sender to \"send_arp\" to suppress this message)"
 		check_binary $SENDARP
-		ARP_SEND_FUN=run_send_arp
+		ARP_SENDER=send_arp
 	    fi
 	fi
     fi
