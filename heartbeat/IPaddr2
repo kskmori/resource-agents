@@ -744,8 +744,20 @@ send_arp() {
 		return
 	fi
 
-	if [ $ARP_COUNT -ne 0 ] ; then
-		$ARP_SEND_FUN
+	if [ $ARP_COUNT -eq 0 ] ; then
+		return
+	fi
+
+        # prepare arguments for each arp sender program
+        # $ARP_SENDER_CMDLINE should be set
+        $ARP_SEND_FUN
+
+	ocf_log $LOGLEVEL "$ARP_SENDER_CMDLINE"
+
+	if ocf_is_true $OCF_RESKEY_arp_bg; then
+		run_arp_sender $ARP_SENDER_CMDLINE &
+	else
+		run_arp_sender $ARP_SENDER_CMDLINE
 	fi
 }
 
@@ -765,13 +777,8 @@ run_send_arp() {
 	fi
 
 	ARGS="$OCF_RESKEY_send_arp_opts -i $OCF_RESKEY_arp_interval -r $ARP_COUNT -p $SENDARPPIDFILE $NIC $OCF_RESKEY_ip $MY_MAC not_used not_used"
-	ocf_log $LOGLEVEL "$SENDARP $ARGS"
 
-	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender $SENDARP $ARGS &
-	else
-		run_arp_sender $SENDARP $ARGS
-	fi
+	ARP_SENDER_CMDLINE="$SENDARP $ARGS"
 }
 #
 # Run iputils-arping to send unsolicited ARPs
@@ -779,26 +786,16 @@ run_send_arp() {
 #
 run_iputils_arping() {
 	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
-	ocf_log $LOGLEVEL "arping $ARGS"
 
-	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS &
-	else
-		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS
-	fi
+	ARP_SENDER_CMDLINE="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
 }
 #
 # Run libnet based arping (not the one in iputils) to send unsolicited ARPs
 #
 run_libnet_arping() {
 	ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
-	ocf_log $LOGLEVEL "arping $ARGS"
 
-	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS &
-	else
-		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS
-	fi
+	ARP_SENDER_CMDLINE="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
 }
 
 
@@ -846,13 +843,8 @@ run_send_ua() {
 #
 run_send_ib_arp() {
 	ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
-	ocf_log $LOGLEVEL "ipoibarping $ARGS"
 
-	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender ipoibarping $ARGS &
-	else
-		run_arp_sender ipoibarping $ARGS
-	fi
+	ARP_SENDER_CMDLINE="ipoibarping $ARGS"
 }
 
 # Do we already serve this IP address on the given $NIC?
