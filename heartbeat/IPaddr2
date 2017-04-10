@@ -782,9 +782,9 @@ run_iputils_arping() {
 	ocf_log $LOGLEVEL "arping $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		(run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS &
 	else
-		run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps"
+		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS
 	fi
 }
 #
@@ -795,9 +795,9 @@ run_libnet_arping() {
 	ocf_log $LOGLEVEL "arping $ARGS"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		(run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps")& >&2
+		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS &
 	else
-		run_with_pidfile $SENDARPPIDFILE arping $ARGS || ocf_log err "Could not send gratuitous arps"
+		run_arp_sender run_with_pidfile $SENDARPPIDFILE arping $ARGS
 	fi
 }
 
