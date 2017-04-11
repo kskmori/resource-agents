@@ -691,6 +691,40 @@ is_infiniband() {
 	$IP2UTIL link show $NIC | grep link/infiniband >/dev/null
 }
 
+log_arp_sender() {
+    local cmdline
+    local output
+    local rc
+    cmdline="$@"
+
+    output=$($cmdline 2>&1)
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ocf_log err "Could not send gratuitous arps: rc=$rc"
+    fi
+    ocf_log $LOGLEVEL "$output"
+}
+
+# wrapper function to manage PID file to run arping in background
+run_with_pidfile() {
+    local cmdline
+    local pidfile
+    local pid
+    local rc
+
+    pidfile="$1"
+    shift
+    cmdline="$@"
+
+    $cmdline &
+    pid=$!
+    echo "$pid" > $pidfile
+    wait $pid
+    rc=$?
+    rm -f $pidfile
+    return $rc
+}
+
 build_arp_sender_cmd() {
     case "$ARP_SENDER" in
 	send_arp)
@@ -728,44 +762,10 @@ build_arp_sender_cmd() {
     esac
 }
 
-# wrapper function to manage PID file to run arping in background
-run_with_pidfile() {
-    local cmdline
-    local pidfile
-    local pid
-    local rc
-
-    pidfile="$1"
-    shift
-    cmdline="$@"
-
-    $cmdline &
-    pid=$!
-    echo "$pid" > $pidfile
-    wait $pid
-    rc=$?
-    rm -f $pidfile
-    return $rc
-}
-
-run_arp_sender() {
-    local cmdline
-    local output
-    local rc
-    cmdline="$@"
-
-    output=$($cmdline 2>&1)
-    rc=$?
-    if [ $rc -ne 0 ]; then
-        ocf_log err "Could not send gratuitous arps: rc=$rc"
-    fi
-    ocf_log $LOGLEVEL "$output"
-}
-
 #
 # Send Unsolicited ARPs to update neighbor's ARP cache
 #
-send_arp() {
+run_arp_sender() {
 	if [ "x$1" = "xrefresh" ] ; then
 		ARP_COUNT=$OCF_RESKEY_arp_count_refresh
 		LOGLEVEL=debug
@@ -792,9 +792,9 @@ send_arp() {
 	ocf_log $LOGLEVEL "$ARP_SENDER_CMD"
 
 	if ocf_is_true $OCF_RESKEY_arp_bg; then
-		run_arp_sender $ARP_SENDER_CMD &
+		log_arp_sender $ARP_SENDER_CMD &
 	else
-		run_arp_sender $ARP_SENDER_CMD
+		log_arp_sender $ARP_SENDER_CMD
 	fi
 }
 
@@ -969,7 +969,7 @@ ip_start() {
 		;;
 	*)
 		if [ $FAMILY = "inet" ];then
-		    send_arp
+		    run_arp_sender
 		else
 		    if [ -x $SENDUA ]; then
 			run_send_ua
@@ -1056,7 +1056,7 @@ ip_monitor() {
 	local ip_status=`ip_served`
 	case $ip_status in
 	ok)
-		send_arp refresh
+		run_arp_sender refresh
 		return $OCF_SUCCESS
 		;;
 	partial|no|partial2)
