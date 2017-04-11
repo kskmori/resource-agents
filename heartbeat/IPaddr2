@@ -708,20 +708,17 @@ log_arp_sender() {
 # wrapper function to manage PID file to run arping in background
 run_with_pidfile() {
     local cmdline
-    local pidfile
     local pid
     local rc
 
-    pidfile="$1"
-    shift
     cmdline="$@"
 
     $cmdline &
     pid=$!
-    echo "$pid" > $pidfile
+    echo "$pid" > $SENDARPPIDFILE
     wait $pid
     rc=$?
-    rm -f $pidfile
+    rm -f $SENDARPPIDFILE
     return $rc
 }
 
@@ -744,11 +741,11 @@ build_arp_sender_cmd() {
 	    ;;
 	iputils_arping)
 	    ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -I $NIC $OCF_RESKEY_ip"
-	    ARP_SENDER_CMD="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
+	    ARP_SENDER_CMD="run_with_pidfile arping $ARGS"
 	    ;;
 	libnet_arping)
 	    ARGS="$OCF_RESKEY_send_arp_opts -U -c $ARP_COUNT -i $NIC -S $OCF_RESKEY_ip $OCF_RESKEY_ip"
-	    ARP_SENDER_CMD="run_with_pidfile $SENDARPPIDFILE arping $ARGS"
+	    ARP_SENDER_CMD="run_with_pidfile arping $ARGS"
 	    ;;
 	ipoibarping)
 	    ARGS="-q -c $ARP_COUNT -U -I $NIC $OCF_RESKEY_ip"
