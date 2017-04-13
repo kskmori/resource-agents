@@ -1068,7 +1068,7 @@ ip_monitor() {
 
 # make sure that we have something to send ARPs with
 set_send_arp_program() {
-    ARP_SENDER="$OCF_RESKEY_arp_sender"
+    ARP_SENDER=send_arp
     if [ -n "$OCF_RESKEY_arp_sender" ]; then
 	case "$OCF_RESKEY_arp_sender" in
 	send_arp)
@@ -1088,6 +1088,7 @@ set_send_arp_program() {
 	    exit $OCF_ERR_CONFIGURED
 	;;
 	esac
+	ARP_SENDER="$OCF_RESKEY_arp_sender"
     else
 	if is_infiniband; then
 	    ARP_SENDER=ipoibarping
