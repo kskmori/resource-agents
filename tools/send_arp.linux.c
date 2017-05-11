@@ -1152,8 +1152,9 @@ main(int argc, char **argv)
 	    device.name = argv[optind];
 	    target = argv[optind+1];
             if (strcmp(argv[optind+2], "auto")) {
-		fprintf(stderr, "send_arp: only \"auto\" is supported as src_hw_addr.\n");
-		exit(2);
+		fprintf(stderr, "send_arp.linux: Gratuitous ARPs are not sent in the Cluster IP configuration\n");
+                /* return success to suppress an error log by the RA */
+		exit(0);
             }
 
 	} else {
