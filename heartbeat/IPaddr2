@@ -447,6 +447,9 @@ ip_init() {
 		fi
 	else
 		FAMILY=inet6
+		# for sanitizing the IPv6 address representation defined in RFC5952
+		OCF_RESKEY_ip=$($IP2UTIL route get $OCF_RESKEY_ip | awk '$1~/:/ {print $1}  $2~/:/ {print $2}')
+
 		if ocf_is_true $OCF_RESKEY_lvs_support ;then
 			ocf_exit_reason "The IPv6 does not support lvs_support"
 			exit $OCF_ERR_CONFIGURED
